@@ -1,8 +1,9 @@
-package fileserver
+package fileserver_test
 
 import (
-	"fileserver/pkg/fileserver/shared"
 	"fmt"
+	"github.com/malumar/fileserver/pkg/fileserver"
+	"github.com/malumar/fileserver/pkg/fileserver/shared"
 	"testing"
 )
 
@@ -83,7 +84,7 @@ func Test_IsValidKey(t *testing.T) {
 		testname := fmt.Sprintf("%q.matchers=%v.isDir=%v", tt.val, tt.allowMatchers, tt.isDir)
 		t.Run(testname, func(t *testing.T) {
 
-			ans := IsValidKey(tt.val, tt.allowMatchers, tt.isDir)
+			ans := fileserver.IsValidKey(tt.val, tt.allowMatchers, tt.isDir)
 			var err error
 			if ans != nil {
 				err = ans.Cause()

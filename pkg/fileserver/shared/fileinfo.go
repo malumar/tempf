@@ -2,7 +2,7 @@ package shared
 
 import (
 	"errors"
-	"fileserver/pkg/exterror"
+	"github.com/malumar/fileserver/pkg/exterror"
 	"log/slog"
 	"os"
 	"strings"

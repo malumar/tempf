@@ -1,10 +1,10 @@
 package main
 
-import (d
-	"fileserver/internal/webserver"
-	"fileserver/pkg/fileserver"
+import (
 	"flag"
 	"fmt"
+	"github.com/malumar/fileserver/internal/webserver"
+	"github.com/malumar/fileserver/pkg/fileserver"
 	"log"
 	"log/slog"
 	"os"
@@ -22,7 +22,7 @@ const (
 	MaxMemoryStore = 10024
 )
 
-type sliceOfFlag[T any][]T
+type sliceOfFlag[T any] []T
 
 // String is an implementation of the flag.Value interface
 func (i *sliceOfFlag[T]) String() string {

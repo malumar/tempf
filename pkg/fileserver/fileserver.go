@@ -7,12 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fileserver/pkg/exterror"
-	"fileserver/pkg/fileserver/shared"
-	"fileserver/pkg/genrand"
-	"fileserver/pkg/pull"
-	"fileserver/pkg/strutil"
 	"fmt"
+	"github.com/malumar/fileserver/pkg/exterror"
+	"github.com/malumar/fileserver/pkg/fileserver/shared"
+	"github.com/malumar/fileserver/pkg/genrand"
+	"github.com/malumar/fileserver/pkg/pull"
+	"github.com/malumar/fileserver/pkg/strutil"
 	"github.com/tidwall/buntdb"
 	"io"
 	"log/slog"
@@ -31,7 +31,6 @@ import (
 const storagePath = "storage"
 const configFilename = "fileserver.db"
 const apiKeyLength = 32
-const pathSeparator = "#"
 const filesPfx = "files#"
 const rootPfx = "root#"
 
@@ -40,7 +39,7 @@ type Config struct {
 	SecureAddr      string   `json:"secure_addr"`
 	Ssl             bool     `json:"ssl"`
 	Domains         []string `json:"domains"`
-	Path            string   `json:path`
+	Path            string   `json:"path"`
 	AllowList       []string
 	MaxUploadSize   int64
 	MaxMemoryStore  int64
@@ -236,7 +235,7 @@ func (self *FileServer) getFileReader(fi *shared.FileInfo) (io.ReadSeeker, *exte
 		// any content or empty?
 		if fi.Value[0] == '1' {
 			return bytes.NewReader([]byte(fi.Value[1:])), nil
-			return strings.NewReader(fi.Value[1:]), nil
+			//			return strings.NewReader(fi.Value[1:]), nil
 		}
 		return strings.NewReader(""), nil
 	}
@@ -474,7 +473,7 @@ func (self *FileServer) Remove(key string) *exterror.Error {
 // matches on any one character.
 // handler called when finded file or directory (fileInfo is nil)
 // return true, nil if you want next results
-func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, include shared.FileType, limit int,
+func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, include shared.FileType,
 	handler func(key string, fileInfo *shared.FileInfo) (bool, *exterror.Error)) *exterror.Error {
 
 	if wildcard {
@@ -523,7 +522,7 @@ func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, inclu
 
 	if err := self.db.Update(func(tx *buntdb.Tx) error {
 
-		tx.AscendKeys(preparedKey, func(key, value string) bool {
+		return tx.AscendKeys(preparedKey, func(key, value string) bool {
 			if len(value) == 0 {
 				if include&shared.Folder != 0 {
 					items = append(items, key+"\n")
@@ -536,7 +535,6 @@ func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, inclu
 
 			return true
 		})
-		return nil
 
 	}); err != nil {
 		if errors.Is(err, buntdb.ErrNotFound) {
@@ -546,7 +544,6 @@ func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, inclu
 		}
 	}
 
-	var count int
 	for _, item := range items {
 		// remove private db pfx from key
 		item = item[len(filesPfx):]
@@ -582,10 +579,6 @@ func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, inclu
 							return nil
 						}
 					}
-				}
-
-				if limit > 0 && count >= limit {
-					return nil
 				}
 
 			}
@@ -839,7 +832,7 @@ func (self *FileServer) PutOrReplaceFile(key string, value string, isDir bool) *
 }
 
 // @realFilename without storagePath
-//func (self *FileServer) removeFileFromStorage(realFilename string) error {
+// func (self *FileServer) removeFileFromStorage(realFilename string) error {
 func (self *FileServer) removeFileFromStorage(fi *shared.FileInfo) *exterror.Error {
 	if _, err := fi.Id(); err != nil {
 		return err
@@ -980,6 +973,8 @@ func IsValidKey(key string, allowMatchCharacters bool, isDir bool) *exterror.Err
 				break
 			}
 		}
+
+		prevCh = c
 	}
 
 	if isDir {
@@ -1076,8 +1071,8 @@ func formatExpirationTime(value string, now time.Time) (time.Time, *exterror.Err
 	case "day":
 		return now.AddDate(0, 0, int(count)), nil
 	case "hour":
-		break
 		return now.Add(time.Duration(count) * time.Hour), nil
+		break
 	case "minute":
 		return now.Add(time.Duration(count) * time.Minute), nil
 		break

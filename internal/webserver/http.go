@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"fileserver/pkg/exterror"
-	"fileserver/pkg/fileserver"
-	"fileserver/pkg/fileserver/shared"
-	"fileserver/pkg/pull"
 	"fmt"
+	"github.com/malumar/fileserver/pkg/exterror"
+	"github.com/malumar/fileserver/pkg/fileserver"
+	"github.com/malumar/fileserver/pkg/fileserver/shared"
+	"github.com/malumar/fileserver/pkg/pull"
 	"golang.org/x/crypto/acme/autocert"
 	"io"
 	"log/slog"
@@ -152,7 +152,6 @@ func (t *Http) Ping(client Client) error {
 
 // MkDir create (virtual) directory with authentication using bearer token
 //
-//
 // parameters after question mark are optionals
 //
 // /mkdir/<path>
@@ -160,6 +159,7 @@ func (t *Http) Ping(client Client) error {
 // Authorization: Bearer <apikey>
 //
 // example:
+//
 //		/mkdir/john/invoices
 //		/mkdir/john/invoices/2024/07
 //		/mkdir/john/others
@@ -183,7 +183,6 @@ func (t *Http) Mkdir(client Client) error {
 // List return list of matching items, you can use wildcard (star character)
 // for matching anything or space for single character
 //
-//
 // parameters after question mark are optionals
 //
 // /list/{path}
@@ -191,6 +190,7 @@ func (t *Http) Mkdir(client Client) error {
 // Authorization: Bearer <apikey>
 //
 // example:
+//
 //		/mkdir/john/invoices
 //		/mkdir/john/invoices/2024/07
 //		/mkdir/john/others
@@ -246,9 +246,12 @@ func (t *Http) List(client Client) error {
 	items := sliceOfItem.Get()
 	defer sliceOfItem.Put(items)
 
-	if err := t.fs.List(client.IsAuthorized(), pth, useWildcard, include, limit,
+	if err := t.fs.List(client.IsAuthorized(), pth, useWildcard, include,
 		func(key string, fileInfo *shared.FileInfo) (bool, *exterror.Error) {
 			items = append(items, shared.Item{key, fileInfo})
+			if limit > 0 && len(items) >= limit {
+				return false, nil
+			}
 			return true, nil
 		}); err != nil {
 		return err
@@ -264,10 +267,11 @@ func (t *Http) List(client Client) error {
 // /upload/<filename_with_path>?name=<original_file_name>&comment=<string>&expire=<format>&hash=<string>
 // hash: if you want to protect the file from public access, set a password
 // expire: period after which the file is to be deleted, no parameter means the file will never expire
-//         enter a numerical value and the ending; year, month, week, day, hour, minute or second
-//         examples:
-//				expire=1day
-//				expire=10year
+//
+//	        enter a numerical value and the ending; year, month, week, day, hour, minute or second
+//	        examples:
+//					expire=1day
+//					expire=10year
 //
 // You can also provide the name, comment, expire and hash fields instead of the URL in the http request headers:
 // X-Comment: <value>
