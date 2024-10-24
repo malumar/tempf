@@ -8,11 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/malumar/fileserver/pkg/exterror"
-	"github.com/malumar/fileserver/pkg/fileserver/shared"
-	"github.com/malumar/fileserver/pkg/genrand"
-	"github.com/malumar/fileserver/pkg/pull"
-	"github.com/malumar/fileserver/pkg/strutil"
+	"github.com/malumar/merror"
+	"github.com/malumar/tempf/pkg/fileserver/shared"
+	"github.com/malumar/tempf/pkg/genrand"
+	"github.com/malumar/tempf/pkg/pull"
+	"github.com/malumar/tempf/pkg/strutil"
 	"github.com/tidwall/buntdb"
 	"io"
 	"log/slog"
@@ -66,15 +66,15 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(cfg *Config) (*FileServer, *exterror.Error) {
+func New(cfg *Config) (*FileServer, *merror.Error) {
 
 	if !filepath.IsAbs(cfg.Path) {
-		return nil, exterror.NewInternalServerWrap(errors.New("storage path must be absolute"))
+		return nil, merror.NewInternalServerWrap(errors.New("storage path must be absolute"))
 	}
 	// disallow root directory
 	p := strings.TrimSpace(strings.ReplaceAll(cfg.Path, " ", ""))
 	if len(p) == 0 || p == "/" || strings.Index(p, `//`) > 0 || strings.Index(p, `\\`) > 0 {
-		return nil, exterror.NewInternalServerWrap(errors.New("invalid config path"))
+		return nil, merror.NewInternalServerWrap(errors.New("invalid config path"))
 	}
 
 	sp := filepath.Join(cfg.Path, storagePath)
@@ -88,7 +88,7 @@ func New(cfg *Config) (*FileServer, *exterror.Error) {
 
 	db, err := buntdb.Open(filepath.Join(cfg.Path, configFilename))
 	if err != nil {
-		return nil, exterror.NewInternalServerWrap(err)
+		return nil, merror.NewInternalServerWrap(err)
 	}
 
 	fs := &FileServer{
@@ -153,15 +153,15 @@ func New(cfg *Config) (*FileServer, *exterror.Error) {
 		})
 	}); err != nil {
 		if errors.Is(err, buntdb.ErrNotFound) {
-			return nil, exterror.NewNotFoundWrap(errors.New("can't find lastId"))
+			return nil, merror.NewNotFoundWrap(errors.New("can't find lastId"))
 		}
-		return nil, exterror.NewInternalServerWrap(err)
+		return nil, merror.NewInternalServerWrap(err)
 	}
 
 	if len(lastId) > 0 {
 		value, err := strconv.ParseUint(lastId, 16, 64)
 		if err != nil {
-			return nil, exterror.NewInternalServerWrap(fmt.Errorf("convert lastId to int: %w", err))
+			return nil, merror.NewInternalServerWrap(fmt.Errorf("convert lastId to int: %w", err))
 		}
 		fs.lastId.Store(value)
 	}
@@ -182,9 +182,9 @@ type FileServer struct {
 }
 
 // GetFileReaderWithoutAuthorization don't require hash for validation
-func (self *FileServer) GetFileReaderWithoutAuthorization(fi *shared.FileInfo) (io.ReadSeeker, *exterror.Error) {
+func (self *FileServer) GetFileReaderWithoutAuthorization(fi *shared.FileInfo) (io.ReadSeeker, *merror.Error) {
 	if fi == nil {
-		return nil, exterror.NewNotFoundWrap(errors.New("file info is empty"))
+		return nil, merror.NewNotFoundWrap(errors.New("file info is empty"))
 	}
 
 	if _, err := fi.Id(); err != nil {
@@ -192,10 +192,10 @@ func (self *FileServer) GetFileReaderWithoutAuthorization(fi *shared.FileInfo) (
 	}
 	return self.getFileReader(fi)
 }
-func (self *FileServer) GetFileReaderIfAuthorized(fi *shared.FileInfo, hash string) (io.ReadSeeker, *exterror.Error) {
+func (self *FileServer) GetFileReaderIfAuthorized(fi *shared.FileInfo, hash string) (io.ReadSeeker, *merror.Error) {
 
 	if fi == nil {
-		return nil, exterror.NewNotFoundWrap(errors.New("file info is empty"))
+		return nil, merror.NewNotFoundWrap(errors.New("file info is empty"))
 	}
 
 	if _, err := fi.Id(); err != nil {
@@ -209,16 +209,16 @@ func (self *FileServer) GetFileReaderIfAuthorized(fi *shared.FileInfo, hash stri
 		//}
 
 		if len(hash) == 0 {
-			return nil, exterror.NewUnauthorizedWrap(errors.New("hash is empty"))
+			return nil, merror.NewUnauthorizedWrap(errors.New("hash is empty"))
 		} else {
 			if fi.Hash != hash {
-				return nil, exterror.NewForbiddenWrap(errors.New("hash does not match"))
+				return nil, merror.NewForbiddenWrap(errors.New("hash does not match"))
 			}
 		}
 	} else {
 		if len(hash) > 0 {
 			if len(fi.Hash) == 0 {
-				return nil, exterror.NewForbiddenWrap(errors.New("item does not have hash set"))
+				return nil, merror.NewForbiddenWrap(errors.New("item does not have hash set"))
 			}
 		}
 	}
@@ -229,7 +229,7 @@ func (self *FileServer) GetFileReaderIfAuthorized(fi *shared.FileInfo, hash stri
 	return self.getFileReader(fi)
 }
 
-func (self *FileServer) getFileReader(fi *shared.FileInfo) (io.ReadSeeker, *exterror.Error) {
+func (self *FileServer) getFileReader(fi *shared.FileInfo) (io.ReadSeeker, *merror.Error) {
 	// file content stored in FileInfo?
 	if len(fi.Value) >= 1 {
 		// any content or empty?
@@ -245,16 +245,16 @@ func (self *FileServer) getFileReader(fi *shared.FileInfo) (io.ReadSeeker, *exte
 	f, err := os.Open(absolutePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, exterror.NewNotFoundWrap(err)
+			return nil, merror.NewNotFoundWrap(err)
 		}
-		return nil, exterror.NewInternalServerWrap(err)
+		return nil, merror.NewInternalServerWrap(err)
 	}
 
 	stat, _ := f.Stat()
 
 	if stat.IsDir() {
 		f.Close()
-		return nil, exterror.NewNotFoundWrap(errors.New("item is directory"))
+		return nil, merror.NewNotFoundWrap(errors.New("item is directory"))
 	}
 
 	return f, nil
@@ -278,10 +278,10 @@ func (self *FileServer) newId() string {
 	return fmt.Sprintf("%016x", self.lastId.Add(1))
 }
 
-func (self *FileServer) ResetApiKey() (string, *exterror.Error) {
+func (self *FileServer) ResetApiKey() (string, *merror.Error) {
 	dat, err := genrand.Bytes(apiKeyLength)
 	if err != nil {
-		return "", exterror.NewInternalServerWrap(err)
+		return "", merror.NewInternalServerWrap(err)
 	}
 	newKey := base64.StdEncoding.EncodeToString(dat)
 	if err := self.UpdateApiKey(newKey); err != nil {
@@ -291,19 +291,19 @@ func (self *FileServer) ResetApiKey() (string, *exterror.Error) {
 	return newKey, nil
 }
 
-func (self *FileServer) IsDirectoryExists(name string) (bool, *exterror.Error) {
+func (self *FileServer) IsDirectoryExists(name string) (bool, *merror.Error) {
 
 	return self.isExists(name, true)
 
 }
 
-func (self *FileServer) IsFileExists(name string) (bool, *exterror.Error) {
+func (self *FileServer) IsFileExists(name string) (bool, *merror.Error) {
 
 	return self.isExists(name, false)
 
 }
 
-func (self *FileServer) GetFileInfo(key string, skipExpired bool) (*shared.FileInfo, *exterror.Error) {
+func (self *FileServer) GetFileInfo(key string, skipExpired bool) (*shared.FileInfo, *merror.Error) {
 
 	if err := IsValidFilename(key, false); err != nil {
 
@@ -326,13 +326,13 @@ func (self *FileServer) GetFileInfo(key string, skipExpired bool) (*shared.FileI
 		return nil
 	}); err != nil {
 		if err == buntdb.ErrNotFound {
-			return nil, exterror.NewNotFound()
+			return nil, merror.NewNotFound()
 		}
-		return nil, exterror.NewInternalServerWrap(err)
+		return nil, merror.NewInternalServerWrap(err)
 	}
 
 	if len(ret) == 0 {
-		return nil, exterror.NewNotFoundWrap(errors.New("key value is empty"))
+		return nil, merror.NewNotFoundWrap(errors.New("key value is empty"))
 	}
 
 	fi, err := ToFileInfo(ret)
@@ -349,7 +349,7 @@ func (self *FileServer) GetFileInfo(key string, skipExpired bool) (*shared.FileI
 			}
 		}()
 
-		return nil, exterror.NewNotFoundWrap(errors.New("key is expired"))
+		return nil, merror.NewNotFoundWrap(errors.New("key is expired"))
 	}
 
 	return fi, nil
@@ -357,7 +357,7 @@ func (self *FileServer) GetFileInfo(key string, skipExpired bool) (*shared.FileI
 	//return filepath.Join(t.storagePath, ret), nil
 }
 
-func (self *FileServer) isExists(name string, checkIsDir bool) (bool, *exterror.Error) {
+func (self *FileServer) isExists(name string, checkIsDir bool) (bool, *merror.Error) {
 
 	if err := IsValidKey(name, false, checkIsDir); err != nil {
 		return false, err
@@ -386,7 +386,7 @@ func (self *FileServer) isExists(name string, checkIsDir bool) (bool, *exterror.
 		if err == buntdb.ErrNotFound {
 			return false, nil
 		} else {
-			return false, exterror.NewInternalServerWrap(err)
+			return false, merror.NewInternalServerWrap(err)
 		}
 	}
 
@@ -394,7 +394,7 @@ func (self *FileServer) isExists(name string, checkIsDir bool) (bool, *exterror.
 
 }
 
-func (self *FileServer) MkDir(name string) *exterror.Error {
+func (self *FileServer) MkDir(name string) *merror.Error {
 	if err := ValidatePath(name); err != nil {
 		return err
 	}
@@ -406,7 +406,7 @@ func (self *FileServer) MkDir(name string) *exterror.Error {
 		} else {
 			if replaced {
 				if len(val) > 0 {
-					return exterror.NewUnprocessableEntityWrap(errors.New("can't create directory, already exists"))
+					return merror.NewUnprocessableEntityWrap(errors.New("can't create directory, already exists"))
 				}
 			}
 		}
@@ -414,18 +414,18 @@ func (self *FileServer) MkDir(name string) *exterror.Error {
 
 	}); err != nil {
 		if errors.Is(err, buntdb.ErrNotFound) {
-			return exterror.NewNotFound()
+			return merror.NewNotFound()
 		}
-		if exterror.Is(err) {
-			return err.(*exterror.Error)
+		if merror.Is(err) {
+			return err.(*merror.Error)
 		}
-		return exterror.NewInternalServerWrap(err)
+		return merror.NewInternalServerWrap(err)
 	}
 	slog.Info("mkdir", "folder", name)
 	return nil
 }
 
-func (self *FileServer) Remove(key string) *exterror.Error {
+func (self *FileServer) Remove(key string) *merror.Error {
 	if err := IsValidFilename(key, false); err != nil {
 		return err
 	}
@@ -445,15 +445,15 @@ func (self *FileServer) Remove(key string) *exterror.Error {
 		return nil
 	}); err != nil {
 		if errors.Is(err, buntdb.ErrNotFound) {
-			return exterror.NewNotFound()
+			return merror.NewNotFound()
 		}
 
 		if errors.Is(err, shared.ErrCantRemoveDirectoryAsFile) {
-			return exterror.NewUnprocessableEntityWrap(shared.ErrCantRemoveDirectoryAsFile).
+			return merror.NewUnprocessableEntityWrap(shared.ErrCantRemoveDirectoryAsFile).
 				SetComment(shared.ErrCantRemoveDirectoryAsFile.Error())
 		}
 
-		return exterror.NewInternalServerWrap(err)
+		return merror.NewInternalServerWrap(err)
 
 	}
 	if len(dat) > 0 {
@@ -474,7 +474,7 @@ func (self *FileServer) Remove(key string) *exterror.Error {
 // handler called when finded file or directory (fileInfo is nil)
 // return true, nil if you want next results
 func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, include shared.FileType,
-	handler func(key string, fileInfo *shared.FileInfo) (bool, *exterror.Error)) *exterror.Error {
+	handler func(key string, fileInfo *shared.FileInfo) (bool, *merror.Error)) *merror.Error {
 
 	if wildcard {
 		if include&shared.File != 0 && include&shared.Folder != 0 {
@@ -491,7 +491,7 @@ func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, inclu
 					return err
 				}
 			} else {
-				return exterror.NewUnprocessableEntity().SetComment("include is required")
+				return merror.NewUnprocessableEntity().SetComment("include is required")
 			}
 		}
 	}
@@ -513,7 +513,7 @@ func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, inclu
 			}
 		}
 		if !found {
-			return exterror.NewUnauthorizedWrap(errors.New("allowlist not match to query")).SetComment("please login")
+			return merror.NewUnauthorizedWrap(errors.New("allowlist not match to query")).SetComment("please login")
 		}
 	}
 
@@ -540,7 +540,7 @@ func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, inclu
 		if errors.Is(err, buntdb.ErrNotFound) {
 			return nil
 		} else {
-			return exterror.NewInternalServerWrap(err)
+			return merror.NewInternalServerWrap(err)
 		}
 	}
 
@@ -588,7 +588,7 @@ func (self *FileServer) List(isAuthorized bool, pth string, wildcard bool, inclu
 	return nil
 }
 
-func (self *FileServer) RemoveAll(key string, useWildcard bool) *exterror.Error {
+func (self *FileServer) RemoveAll(key string, useWildcard bool) *merror.Error {
 	if useWildcard {
 		if err := ValidateWildcardPath(key); err != nil {
 			return err
@@ -619,7 +619,7 @@ func (self *FileServer) RemoveAll(key string, useWildcard bool) *exterror.Error 
 
 		} else {
 			if len(val) != 0 {
-				return exterror.NewNotFoundWrap(shared.ErrItemIsNotRegularFile)
+				return merror.NewNotFoundWrap(shared.ErrItemIsNotRegularFile)
 			}
 		}
 
@@ -646,7 +646,7 @@ func (self *FileServer) RemoveAll(key string, useWildcard bool) *exterror.Error 
 
 	}); err != nil {
 		if err != buntdb.ErrNotFound {
-			return exterror.NewNotFoundWrap(err)
+			return merror.NewNotFoundWrap(err)
 		}
 
 	}
@@ -665,7 +665,7 @@ func (self *FileServer) RemoveAll(key string, useWildcard bool) *exterror.Error 
 	return nil
 }
 
-func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options ...*Options) (int64, string, *exterror.Error) {
+func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options ...*Options) (int64, string, *merror.Error) {
 
 	if err := IsValidFilename(key, false); err != nil {
 		return 0, "", err
@@ -678,7 +678,7 @@ func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options .
 
 	if _, err := os.Stat(tmpPth); os.IsNotExist(err) {
 		if err := os.MkdirAll(tmpPth, 0750); err != nil {
-			return 0, "", exterror.NewInternalServerWrap(err)
+			return 0, "", merror.NewInternalServerWrap(err)
 		}
 	}
 	//	generatedFilenameId := t.newId()
@@ -731,7 +731,7 @@ func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options .
 		return written, "", err
 	} else {
 		if written == 0 {
-			return 0, "", exterror.NewInternalServerWrap(fmt.Errorf("store file failed, copied %d bytes instead of %d", written, size))
+			return 0, "", merror.NewInternalServerWrap(fmt.Errorf("store file failed, copied %d bytes instead of %d", written, size))
 		}
 	}
 
@@ -740,7 +740,7 @@ func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options .
 		strings.HasPrefix(fi.ContentType, "multipart/") ||
 		fi.ContentType == "application/octet-stream" {
 		if f, err := os.Open(tempFilename); err != nil {
-			return 0, "", exterror.NewInternalServerWrap(fmt.Errorf("store file failed, can't open file: %v", err.Error()))
+			return 0, "", merror.NewInternalServerWrap(fmt.Errorf("store file failed, can't open file: %v", err.Error()))
 		} else {
 
 			if ct, errx := DetectContentType(fi.Name, f); errx != nil {
@@ -750,7 +750,7 @@ func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options .
 				fi.ContentType = ct
 			}
 			if err = f.Close(); err != nil {
-				return 0, "", exterror.NewInternalServerWrap(fmt.Errorf("store file failed, can't close file: %v", err.Error()))
+				return 0, "", merror.NewInternalServerWrap(fmt.Errorf("store file failed, can't close file: %v", err.Error()))
 			}
 
 		}
@@ -762,7 +762,7 @@ func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options .
 
 		b, err := os.ReadFile(tempFilename) // just pass the file name
 		if err != nil {
-			return 0, "", exterror.NewInternalServerWrap(fmt.Errorf("store file failed, can't read file into memory: %v", err.Error()))
+			return 0, "", merror.NewInternalServerWrap(fmt.Errorf("store file failed, can't read file into memory: %v", err.Error()))
 		}
 		if len(b) > 0 {
 			fi.Value = "1" + string(b)
@@ -781,7 +781,7 @@ func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options .
 }
 
 // @realFilename without storagePath
-func (self *FileServer) PutOrReplaceFile(key string, value string, isDir bool) *exterror.Error {
+func (self *FileServer) PutOrReplaceFile(key string, value string, isDir bool) *merror.Error {
 	if err := IsValidKey(key, false, isDir); err != nil {
 		return err
 	}
@@ -810,12 +810,12 @@ func (self *FileServer) PutOrReplaceFile(key string, value string, isDir bool) *
 		return nil
 	}); err != nil {
 		if errors.Is(err, buntdb.ErrNotFound) {
-			return exterror.NewNotFound()
+			return merror.NewNotFound()
 		}
 		if errors.Is(err, shared.ErrCantReplaceFile) {
-			return exterror.NewUnprocessableEntityWrap(shared.ErrCantReplaceFile).SetComment(shared.ErrCantReplaceFile.Error())
+			return merror.NewUnprocessableEntityWrap(shared.ErrCantReplaceFile).SetComment(shared.ErrCantReplaceFile.Error())
 		}
-		return exterror.NewInternalServerWrap(err)
+		return merror.NewInternalServerWrap(err)
 	}
 
 	if len(oldValue) > 0 {
@@ -833,7 +833,7 @@ func (self *FileServer) PutOrReplaceFile(key string, value string, isDir bool) *
 
 // @realFilename without storagePath
 // func (self *FileServer) removeFileFromStorage(realFilename string) error {
-func (self *FileServer) removeFileFromStorage(fi *shared.FileInfo) *exterror.Error {
+func (self *FileServer) removeFileFromStorage(fi *shared.FileInfo) *merror.Error {
 	if _, err := fi.Id(); err != nil {
 		return err
 	}
@@ -863,12 +863,12 @@ func (self *FileServer) removeFileFromStorage(fi *shared.FileInfo) *exterror.Err
 
 }
 
-func (self *FileServer) UpdateApiKey(val string) *exterror.Error {
+func (self *FileServer) UpdateApiKey(val string) *merror.Error {
 	self.lock.Lock()
 	defer self.lock.Unlock()
 
 	if len(val) == 0 {
-		return exterror.NewUnprocessableEntityWrap(errors.New("new api key is empty"))
+		return merror.NewUnprocessableEntityWrap(errors.New("new api key is empty"))
 	}
 	if err := self.setOrReplaceConfig("apikey", val); err == nil {
 		slog.Info("api key was changed")
@@ -881,7 +881,7 @@ func (self *FileServer) UpdateApiKey(val string) *exterror.Error {
 
 }
 
-func (self *FileServer) setOrReplaceConfig(key string, val string) *exterror.Error {
+func (self *FileServer) setOrReplaceConfig(key string, val string) *merror.Error {
 	k := rootPfx + key
 	if err := self.db.Update(func(tx *buntdb.Tx) error {
 		if _, _, err := tx.Set(k, val, nil); err != nil {
@@ -890,15 +890,15 @@ func (self *FileServer) setOrReplaceConfig(key string, val string) *exterror.Err
 		return nil
 	}); err != nil {
 		if err == buntdb.ErrNotFound {
-			return exterror.NewNotFound()
+			return merror.NewNotFound()
 		}
-		return exterror.NewInternalServerWrap(err)
+		return merror.NewInternalServerWrap(err)
 	}
 
 	return nil
 }
 
-func (self *FileServer) getConfigKey(key string) (string, *exterror.Error) {
+func (self *FileServer) getConfigKey(key string) (string, *merror.Error) {
 	k := rootPfx + key
 	var retVal string
 	if err := self.db.View(func(tx *buntdb.Tx) error {
@@ -910,20 +910,20 @@ func (self *FileServer) getConfigKey(key string) (string, *exterror.Error) {
 		return nil
 	}); err != nil {
 		if err == buntdb.ErrNotFound {
-			return "", exterror.NewNotFound()
+			return "", merror.NewNotFound()
 		}
-		return "", exterror.NewInternalServerWrap(err)
+		return "", merror.NewInternalServerWrap(err)
 	}
 
 	return retVal, nil
 }
-func ValidateWildcardPath(key string) *exterror.Error {
+func ValidateWildcardPath(key string) *merror.Error {
 	return IsValidKey(key, true, true)
 }
-func ValidatePath(key string) *exterror.Error {
+func ValidatePath(key string) *merror.Error {
 	return IsValidKey(key, false, true)
 }
-func IsValidFilename(key string, allowMatchCharacters bool) *exterror.Error {
+func IsValidFilename(key string, allowMatchCharacters bool) *merror.Error {
 	return IsValidKey(key, allowMatchCharacters, false)
 }
 
@@ -931,10 +931,10 @@ func IsValidFilename(key string, allowMatchCharacters bool) *exterror.Error {
 // directory: cant't begin with slash, and must end with it
 // file: can't begin and end with slash
 // star (*) and question mark(?) are reserved only for matching
-func IsValidKey(key string, allowMatchCharacters bool, isDir bool) *exterror.Error {
+func IsValidKey(key string, allowMatchCharacters bool, isDir bool) *merror.Error {
 
 	if len(key) == 0 {
-		return exterror.NewUnprocessableEntityWrap(shared.ErrKeyNameSyntaxError).SetComment(shared.ErrKeyNameSyntaxError.Error())
+		return merror.NewUnprocessableEntityWrap(shared.ErrKeyNameSyntaxError).SetComment(shared.ErrKeyNameSyntaxError.Error())
 	}
 
 	var fail bool
@@ -948,7 +948,7 @@ func IsValidKey(key string, allowMatchCharacters bool, isDir bool) *exterror.Err
 			if allowMatchCharacters {
 				for _, c2 := range key {
 					if c2 == ' ' {
-						return exterror.NewUnprocessableEntityWrap(shared.ErrKeyNameSyntaxError).SetComment(shared.ErrKeyNameSyntaxError.Error())
+						return merror.NewUnprocessableEntityWrap(shared.ErrKeyNameSyntaxError).SetComment(shared.ErrKeyNameSyntaxError.Error())
 					}
 				}
 				return nil
@@ -979,11 +979,11 @@ func IsValidKey(key string, allowMatchCharacters bool, isDir bool) *exterror.Err
 
 	if isDir {
 		if fail || !matchLinuxDirWithoutSpaces.MatchString("/"+key) {
-			return exterror.NewUnprocessableEntityWrap(shared.ErrKeyNameSyntaxError).SetComment(shared.ErrKeyNameSyntaxError.Error())
+			return merror.NewUnprocessableEntityWrap(shared.ErrKeyNameSyntaxError).SetComment(shared.ErrKeyNameSyntaxError.Error())
 		}
 	} else {
 		if fail || !matchLinuxPathWithoutSpaces.MatchString("/"+key) {
-			return exterror.NewUnprocessableEntityWrap(shared.ErrKeyNameSyntaxError).SetComment(shared.ErrKeyNameSyntaxError.Error())
+			return merror.NewUnprocessableEntityWrap(shared.ErrKeyNameSyntaxError).SetComment(shared.ErrKeyNameSyntaxError.Error())
 		}
 
 	}
@@ -994,16 +994,16 @@ func IsValidKey(key string, allowMatchCharacters bool, isDir bool) *exterror.Err
 var matchLinuxDirWithoutSpaces = regexp.MustCompile(`^(/[^/ ]*)+/$`)
 var matchLinuxPathWithoutSpaces = regexp.MustCompile(`^(/[^/ ]*)+/?$`)
 
-func copyFileFromReader(r io.Reader, dst string) (written int64, err *exterror.Error) {
+func copyFileFromReader(r io.Reader, dst string) (written int64, err *merror.Error) {
 	out, e := os.Create(dst)
 	if e != nil {
-		err = exterror.NewInternalServerWrap(e)
+		err = merror.NewInternalServerWrap(e)
 		return
 	}
 	defer func() {
 		cerr := out.Close()
 		if err == nil && cerr != nil {
-			err = exterror.NewUnprocessableEntityWrap(cerr)
+			err = merror.NewUnprocessableEntityWrap(cerr)
 		}
 	}()
 
@@ -1012,7 +1012,7 @@ func copyFileFromReader(r io.Reader, dst string) (written int64, err *exterror.E
 		e = out.Sync()
 	}
 	if e != nil {
-		err = exterror.NewInternalServerWrap(e)
+		err = merror.NewInternalServerWrap(e)
 	}
 	return
 }
@@ -1025,13 +1025,13 @@ func ToJson(val interface{}) string {
 	return string(dat)
 }
 
-func ToFileInfo(value string) (*shared.FileInfo, *exterror.Error) {
+func ToFileInfo(value string) (*shared.FileInfo, *merror.Error) {
 	if len(value) == 0 {
-		return nil, exterror.NewInternalServerWrap(errors.New("fileinfo value is empty"))
+		return nil, merror.NewInternalServerWrap(errors.New("fileinfo value is empty"))
 	}
 	var fi shared.FileInfo
 	if err := json.Unmarshal([]byte(value), &fi); err != nil {
-		return nil, exterror.NewInternalServerWrap(fmt.Errorf("file info is invalid: %v", err))
+		return nil, merror.NewInternalServerWrap(fmt.Errorf("file info is invalid: %v", err))
 	} else {
 		if _, err := fi.Id(); err != nil {
 			return nil, err
@@ -1043,7 +1043,7 @@ func ToFileInfo(value string) (*shared.FileInfo, *exterror.Error) {
 // formatExpirationTime
 // @value number:[year|month|week|day|hour|minute|second]
 // @return time in future or error
-func formatExpirationTime(value string, now time.Time) (time.Time, *exterror.Error) {
+func formatExpirationTime(value string, now time.Time) (time.Time, *merror.Error) {
 
 	var idx int = 0
 	for i, c := range value {
@@ -1053,12 +1053,12 @@ func formatExpirationTime(value string, now time.Time) (time.Time, *exterror.Err
 		}
 	}
 	if idx < 1 {
-		return time.Time{}, exterror.NewUnprocessableEntity().SetCommentf("invalid expiration time: %v", value)
+		return time.Time{}, merror.NewUnprocessableEntity().SetCommentf("invalid expiration time: %v", value)
 	}
 
 	count, err := strconv.ParseInt(value[:idx], 10, 32)
 	if err != nil || count <= 0 {
-		return time.Time{}, exterror.NewUnprocessableEntity().SetCommentf("formatting expiration time %v: %v", value, err)
+		return time.Time{}, merror.NewUnprocessableEntity().SetCommentf("formatting expiration time %v: %v", value, err)
 	}
 	switch value[idx:] {
 	case "year":
@@ -1080,7 +1080,7 @@ func formatExpirationTime(value string, now time.Time) (time.Time, *exterror.Err
 		return now.Add(time.Duration(count) * time.Second), nil
 		break
 	}
-	return time.Time{}, exterror.NewUnprocessableEntity().SetCommentf("formatting expiration time unrecognized durration %v: %v", value, err)
+	return time.Time{}, merror.NewUnprocessableEntity().SetCommentf("formatting expiration time unrecognized durration %v: %v", value, err)
 }
 
 const sniffLen = 512
@@ -1088,18 +1088,18 @@ const sniffLen = 512
 // DetectContentType recognize content type from file extension or first bytes
 // based on net/http
 // The algorithm uses at most sniffLen bytes to make its decision.
-func DetectContentType(filename string, seeker io.ReadSeeker) (string, *exterror.Error) {
+func DetectContentType(filename string, seeker io.ReadSeeker) (string, *merror.Error) {
 	retType := mime.TypeByExtension(filepath.Ext(filename))
 	if retType == "" {
 		// read a chunk to decide between utf-8 text and binary
 		var buf [sniffLen]byte
 		n, err := io.ReadFull(seeker, buf[:])
 		if err != nil {
-			return "", exterror.NewInternalServerWrap(err)
+			return "", merror.NewInternalServerWrap(err)
 		}
 		// rewind to output whole file
 		if _, err = seeker.Seek(0, io.SeekStart); err != nil {
-			return "", exterror.NewInternalServerWrap(fmt.Errorf("seeker can't seek %v", err.Error()))
+			return "", merror.NewInternalServerWrap(fmt.Errorf("seeker can't seek %v", err.Error()))
 		}
 		retType = http.DetectContentType(buf[:n])
 	}

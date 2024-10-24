@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/malumar/fileserver/internal/webserver"
-	"github.com/malumar/fileserver/pkg/fileserver"
+	"github.com/malumar/tempf/internal/webserver"
+	"github.com/malumar/tempf/pkg/fileserver"
 	"log"
 	"log/slog"
 	"os"

@@ -5,10 +5,10 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/malumar/fileserver/pkg/exterror"
-	"github.com/malumar/fileserver/pkg/fileserver"
-	"github.com/malumar/fileserver/pkg/fileserver/shared"
-	"github.com/malumar/fileserver/pkg/pull"
+	"github.com/malumar/merror"
+	"github.com/malumar/tempf/pkg/fileserver"
+	"github.com/malumar/tempf/pkg/fileserver/shared"
+	"github.com/malumar/tempf/pkg/pull"
 	"golang.org/x/crypto/acme/autocert"
 	"io"
 	"log/slog"
@@ -234,10 +234,10 @@ func (t *Http) List(client Client) error {
 	}
 	if limitStr := client.ParamValue("limit"); len(limitStr) > 0 {
 		if val, err := strconv.ParseInt(limitStr, 10, 32); err != nil {
-			return exterror.NewUnprocessableEntityWrap(err).SetComment("filed limit error")
+			return merror.NewUnprocessableEntityWrap(err).SetComment("filed limit error")
 		} else {
 			if val < 0 {
-				return exterror.NewUnprocessableEntityWrap(err).SetComment("field limit can't be below zero")
+				return merror.NewUnprocessableEntityWrap(err).SetComment("field limit can't be below zero")
 			}
 			limit = int(val)
 		}
@@ -247,7 +247,7 @@ func (t *Http) List(client Client) error {
 	defer sliceOfItem.Put(items)
 
 	if err := t.fs.List(client.IsAuthorized(), pth, useWildcard, include,
-		func(key string, fileInfo *shared.FileInfo) (bool, *exterror.Error) {
+		func(key string, fileInfo *shared.FileInfo) (bool, *merror.Error) {
 			items = append(items, shared.Item{key, fileInfo})
 			if limit > 0 && len(items) >= limit {
 				return false, nil
@@ -294,19 +294,19 @@ func (t *Http) Upload(client Client) error {
 	filename := client.Request().PathValue("path")
 	contentLenStr := client.Request().Header.Get("Content-Length")
 	if len(contentLenStr) == 0 {
-		return exterror.NewUnprocessableEntity().SetComment("Content-Length header is empty")
+		return merror.NewUnprocessableEntity().SetComment("Content-Length header is empty")
 	}
 
 	contentLength, err := strconv.ParseInt(contentLenStr, 10, 64)
 	if err != nil {
-		return exterror.NewUnprocessableEntity().SetComment(fmt.Sprintf("Content-Length header is not a number: %v", err))
+		return merror.NewUnprocessableEntity().SetComment(fmt.Sprintf("Content-Length header is not a number: %v", err))
 	} else {
 		if contentLength == 0 {
-			return exterror.NewUnprocessableEntity().SetComment("Content-Length header is zero")
+			return merror.NewUnprocessableEntity().SetComment("Content-Length header is zero")
 		}
 		if t.fs.Config().MaxUploadSize > 0 {
 			if contentLength > t.fs.Config().MaxUploadSize {
-				return exterror.NewUnprocessableEntity().SetComment("Max upload limit reached")
+				return merror.NewUnprocessableEntity().SetComment("Max upload limit reached")
 			}
 		}
 
@@ -599,7 +599,7 @@ func (t *Http) final(handler func(client Client) error) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c := w.(Client)
 		if err := handler(c); err != nil {
-			if er, ok := err.(*exterror.Error); ok {
+			if er, ok := err.(*merror.Error); ok {
 				if c.IsHeaderSent() {
 					slog.Error("final", er.Error())
 				} else {
@@ -674,7 +674,7 @@ func ApplyJson(code int, client Client, obj interface{}) error {
 	if obj != nil {
 		dat, err := json.Marshal(obj)
 		if err != nil {
-			return exterror.NewInternalServerWrap(err)
+			return merror.NewInternalServerWrap(err)
 		}
 		return ApplyJsonBlob(code, client, dat)
 	} else {
@@ -703,7 +703,7 @@ func ApplyError(client Client, err error) {
 		client.WriteHeader(http.StatusInternalServerError)
 		slog.Error("ApplyError require error value")
 	}
-	if val, ok := err.(*exterror.Error); ok {
+	if val, ok := err.(*merror.Error); ok {
 		if val == nil {
 			ApplyMessage(client, "OK")
 			return
@@ -849,15 +849,15 @@ func readUserIp(r *http.Request) string {
 // i.e. http://example.com/file/filename
 // afterSubstr = "/file/"
 // return "filename"
-func getUriSuffix(client Client, afterSubstr string) (string, *exterror.Error) {
+func getUriSuffix(client Client, afterSubstr string) (string, *merror.Error) {
 	name, err := url.QueryUnescape(client.Request().URL.Path)
 	if err != nil {
-		return "", exterror.NewNotFoundWrap(err)
+		return "", merror.NewNotFoundWrap(err)
 	}
 
 	idx := strings.Index(name, afterSubstr)
 	if idx == -1 {
-		return "", exterror.NewNotFoundWrap(fmt.Errorf("getUriSuffix %s not found", afterSubstr))
+		return "", merror.NewNotFoundWrap(fmt.Errorf("getUriSuffix %s not found", afterSubstr))
 	}
 	if len(afterSubstr) == 0 {
 		idx = len(afterSubstr) - 1
@@ -865,7 +865,7 @@ func getUriSuffix(client Client, afterSubstr string) (string, *exterror.Error) {
 		idx = idx + len(afterSubstr)
 	}
 	if idx > len(name) {
-		return "", exterror.NewNotFoundWrap(fmt.Errorf("1 getUriSuffix %s not found", afterSubstr))
+		return "", merror.NewNotFoundWrap(fmt.Errorf("1 getUriSuffix %s not found", afterSubstr))
 	}
 
 	return name[idx:], nil

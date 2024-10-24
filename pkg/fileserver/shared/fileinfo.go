@@ -2,7 +2,7 @@ package shared
 
 import (
 	"errors"
-	"github.com/malumar/fileserver/pkg/exterror"
+	"github.com/malumar/merror"
 	"log/slog"
 	"os"
 	"strings"
@@ -53,18 +53,18 @@ func (self *FileInfo) IsExpired(when time.Time) bool {
 	}
 }
 
-func (self *FileInfo) Id() (string, *exterror.Error) {
+func (self *FileInfo) Id() (string, *merror.Error) {
 	if len(self.Path) == 0 {
-		return "", exterror.NewInternalServerWrap(ErrItemIsNotRegularFile)
+		return "", merror.NewInternalServerWrap(ErrItemIsNotRegularFile)
 	}
 	idx := strings.LastIndex(self.Path, string(os.PathSeparator))
 
 	if idx > 0 {
 		if idx+1 >= len(self.Path) {
-			return "", exterror.NewInternalServerWrap(errors.New("it is not regular file or don't have id"))
+			return "", merror.NewInternalServerWrap(errors.New("it is not regular file or don't have id"))
 		}
 	} else {
-		return "", exterror.NewInternalServerWrap(errors.New("it is not regular file or don't have set path"))
+		return "", merror.NewInternalServerWrap(errors.New("it is not regular file or don't have set path"))
 	}
 	//}
 	//	lastId = value

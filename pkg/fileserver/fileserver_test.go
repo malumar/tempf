@@ -2,8 +2,8 @@ package fileserver_test
 
 import (
 	"fmt"
-	"github.com/malumar/fileserver/pkg/fileserver"
-	"github.com/malumar/fileserver/pkg/fileserver/shared"
+	"github.com/malumar/tempf/pkg/fileserver"
+	"github.com/malumar/tempf/pkg/fileserver/shared"
 	"testing"
 )
 
