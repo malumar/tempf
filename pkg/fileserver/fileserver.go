@@ -66,7 +66,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(cfg *Config) (*FileServer, *merror.Error) {
+func New(cfg *Config) (*FileServer, error) {
 
 	if !filepath.IsAbs(cfg.Path) {
 		return nil, merror.NewInternalServerWrap(errors.New("storage path must be absolute"))
@@ -97,12 +97,10 @@ func New(cfg *Config) (*FileServer, *merror.Error) {
 		db:          db,
 	}
 
-	//fs.db = db
-	//fs.config = cfg
-
 	// check apikey, if not exist generate one
-	if ak, err := fs.getConfigKey("apikey"); err != nil {
-		if err == buntdb.ErrNotFound {
+	if ak, er := fs.getConfigKey("apikey"); err != nil {
+
+		if merror.IsNotFound(er) {
 			slog.Info("api key is not set")
 			if newApiKey, err := fs.ResetApiKey(); err != nil {
 				slog.Warn("can't setup api key, do it manually", "reason", err)
@@ -111,22 +109,22 @@ func New(cfg *Config) (*FileServer, *merror.Error) {
 			}
 
 		} else {
-			return nil, err
+			return nil, er
 		}
 	} else {
 		fs.apiKey = ak
 	}
 
 	if ak, err := fs.getConfigKey("apikey"); err == nil {
-		if err == buntdb.ErrNotFound {
-			slog.Info(" api key is not settted")
+		if merror.IsNotFound(err) {
+			slog.Info("api key is not settted")
 			if newApiKey, err := fs.ResetApiKey(); err != nil {
-
 				slog.Error("can't setup api key, do it manually", "reason", err)
 			} else {
 				slog.Info("created api key is", slog.Any("key", newApiKey))
 			}
-
+		} else {
+			return nil, err
 		}
 	} else {
 		fs.apiKey = ak
@@ -278,7 +276,7 @@ func (self *FileServer) newId() string {
 	return fmt.Sprintf("%016x", self.lastId.Add(1))
 }
 
-func (self *FileServer) ResetApiKey() (string, *merror.Error) {
+func (self *FileServer) ResetApiKey() (string, error) {
 	dat, err := genrand.Bytes(apiKeyLength)
 	if err != nil {
 		return "", merror.NewInternalServerWrap(err)
@@ -913,6 +911,7 @@ func (self *FileServer) getConfigKey(key string) (string, *merror.Error) {
 			return "", merror.NewNotFound()
 		}
 		return "", merror.NewInternalServerWrap(err)
+
 	}
 
 	return retVal, nil

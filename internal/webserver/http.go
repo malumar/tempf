@@ -69,7 +69,7 @@ func (t *Http) Start() error {
 		}
 		t.wg.Add(1)
 		go func() {
-			slog.Info("Serving request/https for domains: %+v", t.fs.Config().Domains)
+			slog.Info("Serving request/https for domains", "domains", t.fs.Config().Domains)
 
 			// serve HTTP, which will redirect automatically to HTTPS
 			h := t.certManager.HTTPHandler(nil)
@@ -86,19 +86,8 @@ func (t *Http) Start() error {
 		t.wg.Add(1)
 		go func() {
 
-			mux := http.NewServeMux()
+			mux := t.newMuxServer()
 
-			mux.Handle("/stop", t.get(t.restricted(t.final(t.Stop))))
-			mux.Handle("/ping", t.get(t.final(t.Ping)))
-			// {...} require Go 1.22 or never
-			mux.Handle("/mkdir/{path...}", t.get(t.restricted(t.final(t.Mkdir))))
-			mux.Handle("/upload/{path...}", t.post(t.restricted(t.final(t.Upload))))
-			mux.Handle("/list/{path...}", t.get(t.final(t.List)))
-			mux.Handle("/download/{path...}", t.each([]string{http.MethodGet, http.MethodHead}, t.final(t.Download)))
-			mux.Handle("/remove/{path...}", t.each([]string{http.MethodGet, http.MethodHead}, t.final(t.Remove)))
-			mux.Handle("/removeall/{path...}", t.each([]string{http.MethodGet, http.MethodHead}, t.final(t.RemoveAll)))
-
-			http.NewServeMux()
 			t.srv = &http.Server{
 				Addr:    t.fs.Config().Addr,
 				Handler: mux,
@@ -132,6 +121,23 @@ func (t *Http) Start() error {
 
 	t.wg.Wait()
 	return nil
+}
+
+// newMuxServer return http handler of created end points for testing purposes
+func (t *Http) newMuxServer() http.Handler {
+	mux := http.NewServeMux()
+
+	mux.Handle("/stop", t.get(t.restricted(t.final(t.Stop))))
+	mux.Handle("/ping", t.get(t.final(t.Ping)))
+	// {...} require Go 1.22 or never
+	mux.Handle("/mkdir/{path...}", t.post(t.restricted(t.final(t.Mkdir))))
+	mux.Handle("/upload/{path...}", t.post(t.restricted(t.final(t.Upload))))
+	mux.Handle("/list/{path...}", t.get(t.final(t.List)))
+	mux.Handle("/download/{path...}", t.each([]string{http.MethodGet, http.MethodHead}, t.final(t.Download)))
+	mux.Handle("/remove/{path...}", t.each([]string{http.MethodPost, http.MethodHead}, t.final(t.Remove)))
+	mux.Handle("/removeall/{path...}", t.each([]string{http.MethodPost, http.MethodHead}, t.final(t.RemoveAll)))
+
+	return mux
 }
 
 // Stop server http with authentication using bearer token
@@ -601,7 +607,7 @@ func (t *Http) final(handler func(client Client) error) http.Handler {
 		if err := handler(c); err != nil {
 			if er, ok := err.(*merror.Error); ok {
 				if c.IsHeaderSent() {
-					slog.Error("final", er.Error())
+					slog.Error("final", "err", merror.UnWrap(er))
 				} else {
 					ApplyError(c, err)
 				}
@@ -627,12 +633,10 @@ func (t *Http) restricted(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		val := r.Header.Get("Authorization")
-
 		if len(val) <= 8 {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-
 		if slice := strings.Split(val, " "); len(slice) != 2 {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
