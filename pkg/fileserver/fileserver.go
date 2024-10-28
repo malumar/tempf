@@ -209,7 +209,7 @@ func (self *FileServer) GetFileReaderIfAuthorized(fi *shared.FileInfo, hash stri
 		if len(hash) == 0 {
 			return nil, merror.NewUnauthorizedWrap(errors.New("hash is empty"))
 		} else {
-			if fi.Hash != hash {
+			if fi.Hash != HashText(hash) {
 				return nil, merror.NewForbiddenWrap(errors.New("hash does not match"))
 			}
 		}
@@ -688,18 +688,18 @@ func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options .
 	}
 
 	for _, opt := range options {
-		if opt != nil {
-			if len(opt.ContentType) > 0 {
-				fi.ContentType = opt.ContentType
+		if opt == nil {
+			continue
+		}
+		if len(opt.ContentType) > 0 {
+			fi.ContentType = opt.ContentType
+		}
+		if len(opt.ExpireAfter) > 0 {
+			if ft, err := formatExpirationTime(opt.ExpireAfter, now); err != nil {
+				return 0, "", err
+			} else {
+				fi.ExpirationTime = ft.Format(shared.TimeFormat)
 			}
-			if len(opt.ExpireAfter) > 0 {
-				if ft, err := formatExpirationTime(opt.ExpireAfter, now); err != nil {
-					return 0, "", err
-				} else {
-					fi.ExpirationTime = ft.Format(shared.TimeFormat)
-				}
-			}
-
 		}
 
 		if len(opt.OriginalName) > 0 {
@@ -708,7 +708,7 @@ func (self *FileServer) StoreFile(r io.Reader, size int64, key string, options .
 
 		fi.Comment = opt.Comment
 		if len(opt.Hash) > 0 {
-			fi.Hash = opt.Hash
+			fi.Hash = HashText(opt.Hash)
 		}
 
 	}
@@ -1071,13 +1071,10 @@ func formatExpirationTime(value string, now time.Time) (time.Time, *merror.Error
 		return now.AddDate(0, 0, int(count)), nil
 	case "hour":
 		return now.Add(time.Duration(count) * time.Hour), nil
-		break
 	case "minute":
 		return now.Add(time.Duration(count) * time.Minute), nil
-		break
 	case "second":
 		return now.Add(time.Duration(count) * time.Second), nil
-		break
 	}
 	return time.Time{}, merror.NewUnprocessableEntity().SetCommentf("formatting expiration time unrecognized durration %v: %v", value, err)
 }
